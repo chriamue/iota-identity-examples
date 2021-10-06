@@ -14,9 +14,7 @@ use tui::{
     widgets::{Block, BorderType, Borders, ListState, Paragraph, Tabs},
     Terminal,
 };
-
 use std::path::PathBuf;
-
 use identity::account::Account;
 use identity::account::AccountStorage;
 use identity::account::IdentityCreate;
@@ -24,6 +22,8 @@ use identity::account::IdentitySnapshot;
 use identity::account::Result;
 use identity::iota::IotaDID;
 use identity::iota::IotaDocument;
+use qrcode::QrCode;
+use qrcode::render::unicode;
 
 enum Event<I> {
     Input(I),
@@ -49,7 +49,6 @@ impl From<MenuItem> for usize {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    pretty_env_logger::init();
     // The Stronghold settings for the storage.
     let snapshot: PathBuf = "./example-strong.hodl".into();
     let password: String = "my-password".into();
@@ -77,6 +76,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let resolved: IotaDocument = account.resolve_identity(did).await?;
+
+    let did_id = resolved.id().as_str();
+    println!("{}", did_id);
+    let code = QrCode::new(did_id).unwrap();
+    let image = code.render::<unicode::Dense1x2>()
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build();
+    println!("{}", image);
 
     println!("[Example] Tangle Document = {:#?}", resolved);
 
