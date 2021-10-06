@@ -11,11 +11,19 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{
-        Block, BorderType, Borders, ListState, Paragraph, Tabs,
-    },
+    widgets::{Block, BorderType, Borders, ListState, Paragraph, Tabs},
     Terminal,
 };
+
+use std::path::PathBuf;
+
+use identity::account::Account;
+use identity::account::AccountStorage;
+use identity::account::IdentityCreate;
+use identity::account::IdentitySnapshot;
+use identity::account::Result;
+use identity::iota::IotaDID;
+use identity::iota::IotaDocument;
 
 enum Event<I> {
     Input(I),
@@ -26,7 +34,7 @@ enum Event<I> {
 enum MenuItem {
     Home,
     Issue,
-    Verify
+    Verify,
 }
 
 impl From<MenuItem> for usize {
@@ -39,7 +47,39 @@ impl From<MenuItem> for usize {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    pretty_env_logger::init();
+    // The Stronghold settings for the storage.
+    let snapshot: PathBuf = "./example-strong.hodl".into();
+    let password: String = "my-password".into();
+
+    // Create a new Account with Stronghold as the storage adapter.
+    let account: Account = Account::builder()
+        .storage(AccountStorage::Stronghold(snapshot, Some(password)))
+        .build()
+        .await?;
+
+    // Create a new Identity with default settings.
+    let snapshot: IdentitySnapshot = account.create_identity(IdentityCreate::default()).await?;
+
+    // Retrieve the DID from the newly created Identity state.
+    let did: &IotaDID = snapshot.identity().try_did()?;
+
+    println!("[Example] Local Snapshot = {:#?}", snapshot);
+    println!(
+        "[Example] Local Document = {:#?}",
+        snapshot.identity().to_document()?
+    );
+    println!(
+        "[Example] Local Document List = {:#?}",
+        account.list_identities().await
+    );
+
+    let resolved: IotaDocument = account.resolve_identity(did).await?;
+
+    println!("[Example] Tangle Document = {:#?}", resolved);
+
     enable_raw_mode().expect("can run in raw mode");
 
     let (tx, rx) = mpsc::channel();
@@ -153,7 +193,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 fn render_home<'a>() -> Paragraph<'a> {
     let home = Paragraph::new(vec![
         Spans::from(vec![Span::raw("")]),
@@ -179,7 +218,7 @@ fn render_home<'a>() -> Paragraph<'a> {
     home
 }
 
-fn render_issue<'a>() -> Paragraph<'a> { 
+fn render_issue<'a>() -> Paragraph<'a> {
     let issue = Paragraph::new(vec![
         Spans::from(vec![Span::raw("")]),
         Spans::from(vec![Span::raw("Issue")]),
