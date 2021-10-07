@@ -2,18 +2,13 @@ use crossterm::{
     event::{self, Event as CEvent, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
-use identity::account::Account;
-use identity::account::AccountStorage;
-use identity::account::IdentityCreate;
-use identity::account::IdentitySnapshot;
 use identity::account::Result;
 use identity::credential::Credential;
 use identity::crypto::KeyPair;
-use identity::iota::{IotaDID, IotaDocument, Receipt};
+use identity::iota::{IotaDocument, Receipt};
 use qrcode::render::unicode;
 use qrcode::QrCode;
 use std::io;
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -53,35 +48,11 @@ impl From<MenuItem> for usize {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // The Stronghold settings for the storage.
-    let snapshot: PathBuf = "./example-strong.hodl".into();
-    let password: String = "my-password".into();
+    let (issuer_doc, issuer_key, _): (IotaDocument, KeyPair, Receipt) = did::create_did().await?;
 
-    // Create a new Account with Stronghold as the storage adapter.
-    let account: Account = Account::builder()
-        .storage(AccountStorage::Stronghold(snapshot, Some(password)))
-        .build()
-        .await?;
+    println!("[Example] Local Document = {:#?}", issuer_doc);
 
-    // Create a new Identity with default settings.
-    let snapshot: IdentitySnapshot = account.create_identity(IdentityCreate::default()).await?;
-
-    // Retrieve the DID from the newly created Identity state.
-    let did: &IotaDID = snapshot.identity().try_did()?;
-
-    println!("[Example] Local Snapshot = {:#?}", snapshot);
-    println!(
-        "[Example] Local Document = {:#?}",
-        snapshot.identity().to_document()?
-    );
-    println!(
-        "[Example] Local Document List = {:#?}",
-        account.list_identities().await
-    );
-
-    let resolved: IotaDocument = account.resolve_identity(did).await?;
-
-    let did_id = resolved.id().as_str();
+    let did_id = issuer_doc.id().as_str();
     println!("{}", did_id);
     let code = QrCode::new(did_id).unwrap();
     let image = code
@@ -95,7 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (subject_doc, _, _): (IotaDocument, KeyPair, Receipt) = did::create_did().await?;
 
     // Create an unsigned Credential with claims about `subject` specified by `issuer`.
-    let credential: Credential = issue::issue_degree(&resolved, &subject_doc)?;
+    let mut credential: Credential = issue::issue_degree(&issuer_doc, &subject_doc)?;
+    // Sign the Credential with the issuer's private key.
+    issuer_doc.sign_data(&mut credential, issuer_key.private())?;
+
     let credential_str = credential.to_string();
     let vc: &str = credential_str.as_str();
 
@@ -107,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     println!("{}", image);
 
-    println!("[Example] Tangle Document = {:#?}", resolved);
+    println!("[Example] Tangle Document = {:#?}", issuer_doc);
 
     enable_raw_mode().expect("can run in raw mode");
 
