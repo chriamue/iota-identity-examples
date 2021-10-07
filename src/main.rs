@@ -2,7 +2,18 @@ use crossterm::{
     event::{self, Event as CEvent, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
+use identity::account::Account;
+use identity::account::AccountStorage;
+use identity::account::IdentityCreate;
+use identity::account::IdentitySnapshot;
+use identity::account::Result;
+use identity::credential::Credential;
+use identity::crypto::KeyPair;
+use identity::iota::{IotaDID, IotaDocument, Receipt};
+use qrcode::render::unicode;
+use qrcode::QrCode;
 use std::io;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,16 +25,9 @@ use tui::{
     widgets::{Block, BorderType, Borders, ListState, Paragraph, Tabs},
     Terminal,
 };
-use std::path::PathBuf;
-use identity::account::Account;
-use identity::account::AccountStorage;
-use identity::account::IdentityCreate;
-use identity::account::IdentitySnapshot;
-use identity::account::Result;
-use identity::iota::IotaDID;
-use identity::iota::IotaDocument;
-use qrcode::QrCode;
-use qrcode::render::unicode;
+
+mod did;
+mod issue;
 
 enum Event<I> {
     Input(I),
@@ -80,7 +84,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let did_id = resolved.id().as_str();
     println!("{}", did_id);
     let code = QrCode::new(did_id).unwrap();
-    let image = code.render::<unicode::Dense1x2>()
+    let image = code
+        .render::<unicode::Dense1x2>()
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build();
+    println!("{}", image);
+
+    // Create a signed DID Document/KeyPair for the credential subject (see create_did.rs).
+    let (subject_doc, _, _): (IotaDocument, KeyPair, Receipt) = did::create_did().await?;
+
+    // Create an unsigned Credential with claims about `subject` specified by `issuer`.
+    let credential: Credential = issue::issue_degree(&resolved, &subject_doc)?;
+    let credential_str = credential.to_string();
+    let vc: &str = credential_str.as_str();
+
+    let code = QrCode::new(credential.to_string()).unwrap();
+    let image = code
+        .render::<unicode::Dense1x2>()
         .dark_color(unicode::Dense1x2::Light)
         .light_color(unicode::Dense1x2::Dark)
         .build();
@@ -176,7 +197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             rect.render_widget(tabs, chunks[0]);
             match active_menu_item {
                 MenuItem::Home => rect.render_widget(render_home(), chunks[1]),
-                MenuItem::Issue => rect.render_widget(render_issue(), chunks[1]),
+                MenuItem::Issue => rect.render_widget(render_issue(did_id, vc), chunks[1]),
                 MenuItem::Verify => rect.render_widget(render_verify(), chunks[1]),
             }
             rect.render_widget(copyright, chunks[2]);
@@ -226,12 +247,12 @@ fn render_home<'a>() -> Paragraph<'a> {
     home
 }
 
-fn render_issue<'a>() -> Paragraph<'a> {
+fn render_issue<'a>(did: &'a str, credential: &'a str) -> Paragraph<'a> {
     let issue = Paragraph::new(vec![
         Spans::from(vec![Span::raw("")]),
         Spans::from(vec![Span::raw("Issue")]),
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::raw("")]),
+        Spans::from(vec![Span::raw(did)]),
+        Spans::from(vec![Span::raw(credential)]),
         Spans::from(vec![Span::raw("Press q to quit.")]),
     ])
     .alignment(Alignment::Center)
