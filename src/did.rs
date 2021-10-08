@@ -1,7 +1,6 @@
 use identity::iota::Receipt;
 use identity::iota::{ClientMap, TangleRef};
 use identity::prelude::*;
-
 pub async fn create_did() -> Result<(IotaDocument, KeyPair, Receipt)> {
     // Create a client instance to send messages to the Tangle.
     let client: ClientMap = ClientMap::new();

@@ -17,7 +17,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, BorderType, Borders, ListState, Paragraph, Tabs},
+    widgets::{Block, BorderType, Borders, ListState, Paragraph, Tabs, Wrap},
     Terminal,
 };
 
@@ -222,21 +222,25 @@ fn render_home<'a>() -> Paragraph<'a> {
 }
 
 fn render_issue<'a>(did: &'a str, credential: &'a str) -> Paragraph<'a> {
-    let issue = Paragraph::new(vec![
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::raw("Issue")]),
-        Spans::from(vec![Span::raw(did)]),
-        Spans::from(vec![Span::raw(credential)]),
-        Spans::from(vec![Span::raw("Press q to quit.")]),
-    ])
-    .alignment(Alignment::Center)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White))
-            .title("Issue")
-            .border_type(BorderType::Plain),
-    );
+    let code = QrCode::new(credential.to_string()).unwrap();
+    let image: String = code
+        .render::<unicode::Dense1x2>()
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build();
+
+    let text = tui::text::Text::from(format!("{}\nissued by {}", image, did));
+
+    let issue = Paragraph::new(text)
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::White))
+                .title("Issue")
+                .border_type(BorderType::Plain),
+        )
+        .wrap(Wrap { trim: true });
     issue
 }
 
